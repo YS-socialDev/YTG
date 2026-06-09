@@ -374,6 +374,7 @@
 
 </style>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
 </head>
 <body>
 
@@ -1579,30 +1580,24 @@ window.openSourcesModal = openSourcesModal;
           <div id="tgLoginWidget"></div>
         </div>
 
-        <div class="yp-sec-title">Wallet</div>
-        <div style="background:linear-gradient(135deg,#1c2230,#11141b);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px;position:relative;overflow:hidden">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-            <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#ff7a18,#ffd166);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;box-shadow:0 6px 18px -6px rgba(255,122,24,.6)"><i class="fa-solid fa-star"></i></div>
-            <div>
-              <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">Balance</div>
-              <div style="font-size:22px;font-weight:800">0.00 <span style="font-size:13px;font-weight:600;color:var(--brand)">YONG STAR</span></div>
+        <div class="yp-sec-title">TON Wallet</div>
+        <div style="background:linear-gradient(135deg,#0a2540,#0098EA);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px;position:relative;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div style="width:38px;height:38px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;color:#0098EA;font-size:18px;font-weight:800;box-shadow:0 6px 18px -6px rgba(0,152,234,.6)">💎</div>
+            <div style="flex:1">
+              <div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.6px">Balance</div>
+              <div style="font-size:22px;font-weight:800;color:#fff"><span id="tonBalance">—</span> <span style="font-size:13px;font-weight:600;opacity:.85">TON</span></div>
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px">
-            <button class="yp-btn wallet-action" data-wact="send" style="flex-direction:column;gap:4px;padding:12px 6px;text-align:center;cursor:pointer">
-              <i class="lead fa-solid fa-paper-plane" style="margin:0;color:#1d8fff"></i>
-              <span style="font-size:12px;font-weight:600">Send</span>
-            </button>
-            <button class="yp-btn wallet-action" data-wact="receive" style="flex-direction:column;gap:4px;padding:12px 6px;text-align:center;cursor:pointer">
-              <i class="lead fa-solid fa-download" style="margin:0;color:#22c55e"></i>
-              <span style="font-size:12px;font-weight:600">Receive</span>
-            </button>
-            <button class="yp-btn wallet-action" data-wact="stake" style="flex-direction:column;gap:4px;padding:12px 6px;text-align:center;cursor:pointer">
-              <i class="lead fa-solid fa-layer-group" style="margin:0;color:#ff7a18"></i>
-              <span style="font-size:12px;font-weight:600">Stake</span>
-            </button>
+          <div id="tonAddrRow" style="display:none;align-items:center;gap:8px;background:rgba(0,0,0,.25);padding:8px 10px;border-radius:10px;margin-bottom:10px">
+            <i class="fa-solid fa-wallet" style="color:#fff;opacity:.8"></i>
+            <span id="tonAddress" style="font-family:monospace;font-size:12px;color:#fff;flex:1;overflow:hidden;text-overflow:ellipsis"></span>
+            <button id="tonCopyBtn" title="Copy" style="background:transparent;border:0;color:#fff;cursor:pointer"><i class="fa-solid fa-copy"></i></button>
           </div>
-          <div style="margin-top:10px;font-size:11px;color:var(--muted);text-align:center">Send, Receive & Stake coming soon</div>
+          <button id="tonConnectBtn" style="width:100%;padding:12px;border-radius:12px;border:0;background:#fff;color:#0098EA;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+            <i class="fa-solid fa-link"></i> <span id="tonConnectBtnLabel">Connect TON Wallet</span>
+          </button>
+          <div style="margin-top:10px;font-size:11px;color:rgba(255,255,255,.75);text-align:center">⚡ Powered by TON Connect</div>
         </div>
 
         <div class="yp-sec-title">Popular Tags To Follow</div>
@@ -1722,14 +1717,92 @@ window.openSourcesModal = openSourcesModal;
         if(typeof showToast==='function') showToast('Open this app inside Telegram to sign in automatically.');
         return;
       }
-      var wa = e.target.closest && e.target.closest('.wallet-action');
-      if(wa){
-        e.preventDefault();
-        var act = wa.dataset.wact;
-        var label = act==='send'?'Send':act==='receive'?'Receive':'Stake';
-        if(typeof showToast==='function') showToast(label+' Yong Star — coming soon, still in development.');
-      }
     });
+  })();
+
+  /* ---- TON Connect integration ---- */
+  (function(){
+    var MANIFEST_URL = 'https://ys-socialdev.github.io/YTG/tonconnect-manifest.json';
+    function fmtAddr(a){ if(!a) return ''; return a.slice(0,4)+'…'+a.slice(-4); }
+    function toUserFriendly(rawHex){
+      // raw hex addresses like "0:abcd..." — leave as-is; UI SDK gives account.address in raw form.
+      // We'll display it truncated.
+      return rawHex;
+    }
+    function init(){
+      if(!window.TON_CONNECT_UI){ setTimeout(init, 400); return; }
+      var tonConnectUI;
+      try{
+        tonConnectUI = new window.TON_CONNECT_UI.TonConnectUI({ manifestUrl: MANIFEST_URL });
+      }catch(e){ console.error('TonConnect init failed', e); return; }
+      window.tonConnectUI = tonConnectUI;
+
+      var btn = document.getElementById('tonConnectBtn');
+      var label = document.getElementById('tonConnectBtnLabel');
+      var addrRow = document.getElementById('tonAddrRow');
+      var addrEl = document.getElementById('tonAddress');
+      var balEl = document.getElementById('tonBalance');
+      var copyBtn = document.getElementById('tonCopyBtn');
+
+      function setDisconnected(){
+        if(label) label.textContent = 'Connect TON Wallet';
+        if(addrRow) addrRow.style.display = 'none';
+        if(balEl) balEl.textContent = '—';
+      }
+      function setConnected(addr){
+        if(label) label.textContent = 'Disconnect Wallet';
+        if(addrRow) addrRow.style.display = 'flex';
+        if(addrEl){ addrEl.textContent = fmtAddr(addr); addrEl.dataset.full = addr; }
+        fetchBalance(addr);
+      }
+      function fetchBalance(addr){
+        if(!addr || !balEl) return;
+        balEl.textContent = '…';
+        fetch('https://toncenter.com/api/v2/getAddressBalance?address='+encodeURIComponent(addr))
+          .then(function(r){ return r.json(); })
+          .then(function(j){
+            if(j && j.ok && j.result!=null){
+              var ton = Number(j.result)/1e9;
+              balEl.textContent = ton.toFixed(2);
+            } else { balEl.textContent = '0.00'; }
+          })
+          .catch(function(){ balEl.textContent = '0.00'; });
+      }
+
+      if(btn){
+        btn.addEventListener('click', function(){
+          if(tonConnectUI.connected){
+            tonConnectUI.disconnect();
+          } else {
+            tonConnectUI.openModal();
+          }
+        });
+      }
+      if(copyBtn){
+        copyBtn.addEventListener('click', function(){
+          var full = addrEl && addrEl.dataset.full;
+          if(!full) return;
+          try{ navigator.clipboard.writeText(full); if(typeof showToast==='function') showToast('Address copied'); }catch(_){}
+        });
+      }
+
+      tonConnectUI.onStatusChange(function(wallet){
+        if(wallet && wallet.account && wallet.account.address){
+          setConnected(wallet.account.address);
+        } else {
+          setDisconnected();
+        }
+      });
+
+      // initial state
+      try{
+        var w = tonConnectUI.wallet;
+        if(w && w.account && w.account.address) setConnected(w.account.address);
+        else setDisconnected();
+      }catch(_){ setDisconnected(); }
+    }
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
   })();
 
 
