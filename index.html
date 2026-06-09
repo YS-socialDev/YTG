@@ -373,6 +373,7 @@
 .dca-result .big{font-size:22px;font-weight:800;background:linear-gradient(90deg,var(--brand),var(--brand-2));-webkit-background-clip:text;background-clip:text;color:transparent}
 
 </style>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
 
@@ -1685,11 +1686,40 @@ window.openSourcesModal = openSourcesModal;
     var existing=loadTgUser();
     if(existing) applyTgUser(existing);
 
+    // Auto-login via Telegram WebApp (when opened inside Telegram)
+    function tryTelegramWebAppAuto(){
+      try{
+        var tg = window.Telegram && window.Telegram.WebApp;
+        if(!tg) return false;
+        try{ tg.ready(); tg.expand && tg.expand(); }catch(_){}
+        var u = tg.initDataUnsafe && tg.initDataUnsafe.user;
+        if(u && u.id){
+          window.onTelegramAuth({
+            id: u.id,
+            first_name: u.first_name,
+            last_name: u.last_name,
+            username: u.username,
+            photo_url: u.photo_url
+          });
+          return true;
+        }
+      }catch(_){}
+      return false;
+    }
+    if(!existing){
+      if(!tryTelegramWebAppAuto()){
+        // retry shortly in case SDK loads late
+        setTimeout(tryTelegramWebAppAuto, 600);
+        setTimeout(tryTelegramWebAppAuto, 1500);
+      }
+    }
+
     document.addEventListener('click', function(e){
       var lb = e.target.closest && e.target.closest('#tgLoginBtn');
       if(lb){
         e.preventDefault();
-        if(typeof showToast==='function') showToast('Telegram login coming soon — bot setup in progress.');
+        if(tryTelegramWebAppAuto()) return;
+        if(typeof showToast==='function') showToast('Open this app inside Telegram to sign in automatically.');
         return;
       }
       var wa = e.target.closest && e.target.closest('.wallet-action');
